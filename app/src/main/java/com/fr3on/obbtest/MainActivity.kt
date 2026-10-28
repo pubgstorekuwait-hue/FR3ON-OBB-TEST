@@ -27,33 +27,74 @@ override fun onCreate(savedInstanceState: Bundle?) {
     }
 
     val status = TextView(this).apply {
-        text = "اضغط الزر لفحص ملف البيانات"
+        text = "جاهز لاختبار ملفات البيانات"
         textSize = 17f
         gravity = Gravity.CENTER
-        setPadding(0, 30, 0, 30)
+        setPadding(0, 24, 0, 24)
     }
 
-    val button = Button(this).apply {
-        text = "فحص ملف OBB"
+    val createButton = Button(this).apply {
+        text = "إنشاء ملف OBB تجريبي"
+
         setOnClickListener {
-            val obbDir = File(
-                android.os.Environment.getExternalStorageDirectory(),
-                "Android/obb/$packageName"
+            try {
+                val testDir = File(filesDir, "obb-test")
+                if (!testDir.exists() && !testDir.mkdirs()) {
+                    throw Exception("تعذر إنشاء مجلد الاختبار")
+                }
+
+                val testFile = File(
+                    testDir,
+                    "main.1.com.fr3on.obbtest.obb"
+                )
+
+                testFile.writeText(
+                    "FR3ON OBB TEST\nTest data file\n"
+                )
+
+                status.text =
+                    "تم إنشاء الملف التجريبي بنجاح\n" +
+                    "الحجم: ${testFile.length()} بايت"
+            } catch (e: Exception) {
+                status.text =
+                    "فشل إنشاء الملف:\n${e.message}"
+            }
+        }
+    }
+
+    val checkButton = Button(this).apply {
+        text = "فحص الملف التجريبي"
+
+        setOnClickListener {
+            val testFile = File(
+                filesDir,
+                "obb-test/main.1.com.fr3on.obbtest.obb"
             )
 
-            val files = obbDir.listFiles()
-            status.text = if (files != null && files.any { it.extension == "obb" }) {
-                "تم العثور على ملف OBB"
+            status.text = if (testFile.isFile) {
+                val content = testFile.readText()
+                "الملف موجود ويمكن قراءته بنجاح\n\n" +
+                "الحجم: ${testFile.length()} بايت\n\n" +
+                "المحتوى:\n$content"
             } else {
-                "لم يتم العثور على ملف OBB في المسار المتوقع"
+                "الملف غير موجود.\nاضغط إنشاء ملف OBB تجريبي أولًا."
             }
         }
     }
 
     layout.addView(title)
     layout.addView(status)
+
     layout.addView(
-        button,
+        createButton,
+        ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    )
+
+    layout.addView(
+        checkButton,
         ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
