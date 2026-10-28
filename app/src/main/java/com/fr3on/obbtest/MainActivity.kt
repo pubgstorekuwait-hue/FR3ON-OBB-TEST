@@ -2,76 +2,96 @@ package com.fr3on.obbtest
 
 import android.app.Activity
 import android.app.DownloadManager
-import android.content.*
-import android.content.pm.PackageManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
-import android.widget.*
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
 import java.io.File
 import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private lateinit var apkUrl: EditText
-    private lateinit var obbUrl: EditText
-    private lateinit var status: TextView
-    private lateinit var progress: ProgressBar
-    private lateinit var progressText: TextView
-    private lateinit var apkButton: Button
-    private lateinit var obbButton: Button
-    private lateinit var installButton: Button
-    private lateinit var cancelButton: Button
-
-    private lateinit var downloadManager: DownloadManager
-
-    private val handler = Handler(Looper.getMainLooper())
-
-    private var apkDownloadId = -1L
-    private var obbDownloadId = -1L
-
-    private var apkFile: File? = null
-    private var obbFile: File? = null
-
-    private var activeDownloadId = -1L
-    private var activeType = ""
-
-    private var downloading = false
-
-    private val pollTask = object : Runnable {
-        override fun run() {
-            if (!downloading) return
-
-            updateDownloadProgress()
-            handler.postDelayed(this, 500)
-        }
-    }
-
     companion object {
+        // استبدل الرابط برابط APK الحقيقي للعبة.
+        private const val APK_URL =
+            "https://example.com/game.apk"
+
+        // لو اللعبة تحتاج OBB، ضع رابطه هنا.
+        // اتركه فارغًا إذا كانت اللعبة لا تحتاج ملف OBB منفصلًا.
+        private const val OBB_URL = ""
+
         private const val BG = 0xFF101114.toInt()
         private const val CARD = 0xFF1C1F24.toInt()
         private const val RED = 0xFFE53945.toInt()
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val MUTED = 0xFFB8BEC8.toInt()
         private const val GREEN = 0xFF45D483.toInt()
+
+        private const val DOWNLOAD_NONE = 0
+        private const val DOWNLOAD_APK = 1
+        private const val DOWNLOAD_OBB = 2
+    }
+
+    private lateinit var manager: DownloadManager
+    private lateinit var status: TextView
+    private lateinit var progress: ProgressBar
+    private lateinit var progressText: TextView
+    private lateinit var downloadButton: Button
+    private lateinit var playButton: Button
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    private var apkDownloadId = -1L
+    private var obbDownloadId = -1L
+    private var activeDownloadId = -1L
+    private var downloadStage = DOWNLOAD_NONE
+    private var downloading = false
+
+    private lateinit var apkFile: File
+    private lateinit var obbFile: File
+
+    private val poll = object : Runnable {
+        override fun run() {
+            if (downloading) {
+                checkDownload()
+                handler.postDelayed(this, 700)
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        downloadManager =
-            getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+        manager = getSystemService(
+            Context.DOWNLOAD_SERVICE
+        ) as DownloadManager
+
+        val directory = getExternalFilesDir(
+            Environment.DIRECTORY_DOWNLOADS
+        ) ?: filesDir
+
+        apkFile = File(directory, "fr3on-game.apk")
+        obbFile = File(directory, "fr3on-game.obb")
 
         buildInterface()
-        restoreDownloads()
+        restoreState()
     }
 
     private fun buildInterface() {
@@ -84,12 +104,13 @@ class MainActivity : Activity() {
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(28))
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(20), dp(30), dp(20), dp(24))
         }
 
-        val brand = TextView(this).apply {
+        val logo = TextView(this).apply {
             text = "FR3ON"
-            textSize = 36f
+            textSize = 38f
             gravity = Gravity.CENTER
             setTextColor(RED)
             typeface = Typeface.DEFAULT_BOLD
@@ -97,43 +118,73 @@ class MainActivity : Activity() {
 
         val subtitle = TextView(this).apply {
             text = "GAME INSTALLER"
-            textSize = 18f
+            textSize = 19f
             gravity = Gravity.CENTER
             setTextColor(WHITE)
             typeface = Typeface.DEFAULT_BOLD
         }
 
         val description = TextView(this).apply {
-            text = "تحميل الألعاب وتجهيز ملفات البيانات"
+            text = "حمّل لعبتك واستعد للعب"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(MUTED)
+            setPadding(0, dp(12), 0, dp(28))
+        }
+
+        val gameCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(26), dp(20), dp(26))
+
+            background = GradientDrawable().apply {
+                setColor(CARD)
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), 0xFF30343B.toInt())
+            }
+        }
+
+        val gameIcon = TextView(this).apply {
+            text = "🎮"
+            textSize = 64f
+            gravity = Gravity.CENTER
+        }
+
+        val gameName = TextView(this).apply {
+            text = "لعبتك المفضلة"
+            textSize = 23f
+            gravity = Gravity.CENTER
+            setTextColor(WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, dp(12), 0, dp(8))
+        }
+
+        val gameDescription = TextView(this).apply {
+            text = "تحميل ملفات اللعبة وتجهيزها للتثبيت"
             textSize = 14f
             gravity = Gravity.CENTER
             setTextColor(MUTED)
-            setPadding(0, dp(8), 0, dp(22))
         }
 
-        val card = LinearLayout(this).apply {
+        gameCard.addView(gameIcon)
+        gameCard.addView(gameName)
+        gameCard.addView(gameDescription)
+
+        val statusCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
 
             background = GradientDrawable().apply {
                 setColor(CARD)
-                cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), 0xFF30343B.toInt())
+                cornerRadius = dp(14).toFloat()
             }
         }
 
-        val cardTitle = TextView(this).apply {
-            text = "حالة التحميل"
-            textSize = 18f
-            setTextColor(WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-        }
-
         status = TextView(this).apply {
-            text = "جاهز لتحميل ملفات اللعبة."
-            textSize = 14f
-            setTextColor(MUTED)
-            setPadding(0, dp(12), 0, dp(12))
+            text = "جاهز لتحميل اللعبة"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(WHITE)
         }
 
         progress = ProgressBar(
@@ -148,81 +199,51 @@ class MainActivity : Activity() {
         progressText = TextView(this).apply {
             text = "0%"
             textSize = 13f
+            gravity = Gravity.CENTER
             setTextColor(GREEN)
-            setPadding(0, dp(8), 0, dp(8))
+            setPadding(0, dp(10), 0, 0)
         }
 
-        card.addView(cardTitle)
-        card.addView(status)
-        card.addView(progress)
-        card.addView(progressText)
+        statusCard.addView(status)
+        statusCard.addView(space(14))
+        statusCard.addView(progress)
+        statusCard.addView(progressText)
 
-        val apkTitle = label("رابط ملف APK")
-
-        apkUrl = editText(
-            "https://example.com/game.apk"
-        )
-
-        apkButton = button("تحميل APK", RED) {
-            startDownload(apkUrl.text.toString(), "apk")
+        downloadButton = makeButton(
+            "تحميل اللعبة",
+            RED,
+            WHITE
+        ) {
+            startGameDownload()
         }
 
-        val obbTitle = label("رابط ملف OBB")
-
-        obbUrl = editText(
-            "https://example.com/main.1.package.obb"
-        )
-
-        obbButton = button("تحميل OBB", 0xFF30343B.toInt()) {
-            startDownload(obbUrl.text.toString(), "obb")
-        }
-
-        installButton = button(
-            "تثبيت ملف APK",
+        playButton = makeButton(
+            "فتح اللعبة",
             GREEN,
-            0xFF101114.toInt()
+            BG
         ) {
-            installApk()
-        }
-
-        cancelButton = button(
-            "إلغاء التحميل",
-            0xFF7B252B.toInt()
-        ) {
-            cancelDownload()
+            openInstalledGame()
         }
 
         val note = TextView(this).apply {
-            text =
-                "مهم: استخدم روابط HTTPS مباشرة لملفات تملكها " +
-                "أو لديك إذن بتنزيلها.\n\n" +
-                "ملف OBB يُحفظ في مجلد التطبيق أولًا. " +
-                "نقله إلى مجلد لعبة أخرى يحتاج معالجة منفصلة، " +
-                "وقد تمنعه قيود أندرويد."
+            text = "سيتم تنزيل الملفات وتجهيزها. " +
+                "قد يطلب أندرويد تأكيد تثبيت اللعبة."
             textSize = 12f
-            setTextColor(MUTED)
-            setPadding(0, dp(18), 0, 0)
             gravity = Gravity.CENTER
+            setTextColor(MUTED)
+            setPadding(0, dp(20), 0, 0)
         }
 
-        content.addView(brand)
+        content.addView(logo)
         content.addView(subtitle)
         content.addView(description)
-        content.addView(card)
+        content.addView(gameCard)
         content.addView(space(20))
-        content.addView(apkTitle)
-        content.addView(apkUrl, fullWidth())
-        content.addView(space(8))
-        content.addView(apkButton, fullWidth())
+        content.addView(statusCard)
         content.addView(space(20))
-        content.addView(obbTitle)
-        content.addView(obbUrl, fullWidth())
-        content.addView(space(8))
-        content.addView(obbButton, fullWidth())
-        content.addView(space(12))
-        content.addView(installButton, fullWidth())
-        content.addView(space(8))
-        content.addView(cancelButton, fullWidth())
+        content.addView(downloadButton, fullWidth())
+        content.addView(space(10))
+        content.addView(playButton, fullWidth())
         content.addView(note)
 
         scroll.addView(content)
@@ -246,72 +267,41 @@ class MainActivity : Activity() {
         root.addView(footer)
         setContentView(root)
 
-        cancelButton.isEnabled = false
-        installButton.isEnabled = false
+        playButton.visibility = View.GONE
     }
 
-    private fun startDownload(rawUrl: String, type: String) {
+    private fun startGameDownload() {
         if (downloading) {
-            toast("يوجد تحميل جارٍ بالفعل.")
+            toast("التحميل جارٍ بالفعل.")
             return
         }
 
-        val url = rawUrl.trim()
-
-        if (url.isEmpty() ||
-            url.startsWith("https://example.com")
-        ) {
-            toast("ضع رابط الملف الحقيقي أولًا.")
+        if (!validHttpsUrl(APK_URL)) {
+            status.text = "رابط اللعبة غير مجهز بعد."
+            toast("يجب وضع رابط APK حقيقي في الكود.")
             return
         }
 
-        val uri = try {
-            Uri.parse(url)
-        } catch (_: Exception) {
-            toast("الرابط غير صالح.")
-            return
-        }
+        downloading = true
+        downloadButton.isEnabled = false
+        progress.progress = 0
 
-        if (uri.scheme != "https" || uri.host.isNullOrBlank()) {
-            toast("استخدم رابط HTTPS مباشرًا وآمنًا.")
-            return
-        }
+        startDownload(APK_URL, DOWNLOAD_APK)
+    }
 
-        val directory = getExternalFilesDir(
-            Environment.DIRECTORY_DOWNLOADS
-        ) ?: run {
-            toast("تعذر الوصول إلى مجلد التنزيلات.")
-            return
-        }
-
-        if (!directory.exists() && !directory.mkdirs()) {
-            toast("تعذر إنشاء مجلد التنزيلات.")
-            return
-        }
-
-        val filename = if (type == "apk") {
-            "fr3on-game.apk"
-        } else {
-            "fr3on-game.obb"
-        }
-
-        val destination = File(directory, filename)
-
-        if (destination.exists() && !destination.delete()) {
-            toast("تعذر استبدال الملف القديم.")
-            return
-        }
-
+    private fun startDownload(url: String, stage: Int) {
         try {
+            val uri = Uri.parse(url)
+
+            val fileName = if (stage == DOWNLOAD_APK) {
+                "fr3on-game.apk"
+            } else {
+                "fr3on-game.obb"
+            }
+
             val request = DownloadManager.Request(uri)
-                .setTitle(
-                    if (type == "apk") {
-                        "FR3ON - تنزيل اللعبة"
-                    } else {
-                        "FR3ON - تنزيل بيانات اللعبة"
-                    }
-                )
-                .setDescription("جارٍ تنزيل الملف...")
+                .setTitle("FR3ON - تحميل اللعبة")
+                .setDescription("جارٍ تنزيل ملفات اللعبة")
                 .setNotificationVisibility(
                     DownloadManager.Request
                         .VISIBILITY_VISIBLE_NOTIFY_COMPLETED
@@ -321,276 +311,182 @@ class MainActivity : Activity() {
                 .setDestinationInExternalFilesDir(
                     this,
                     Environment.DIRECTORY_DOWNLOADS,
-                    filename
+                    fileName
                 )
 
-            activeDownloadId = downloadManager.enqueue(request)
-            activeType = type
-            downloading = true
+            activeDownloadId = manager.enqueue(request)
+            downloadStage = stage
 
-            if (type == "apk") {
+            if (stage == DOWNLOAD_APK) {
                 apkDownloadId = activeDownloadId
-                apkFile = destination
             } else {
                 obbDownloadId = activeDownloadId
-                obbFile = destination
             }
 
-            apkButton.isEnabled = false
-            obbButton.isEnabled = false
-            cancelButton.isEnabled = true
-            installButton.isEnabled = false
+            status.text = if (stage == DOWNLOAD_APK) {
+                "جارٍ تحميل اللعبة..."
+            } else {
+                "جارٍ تجهيز ملفات اللعبة..."
+            }
 
-            progress.progress = 0
-            progressText.text = "جارٍ بدء التحميل..."
-            status.text = "بدأ تنزيل ${if (type == "apk") "APK" else "OBB"}"
-
-            handler.removeCallbacks(pollTask)
-            handler.post(pollTask)
+            handler.removeCallbacks(poll)
+            handler.post(poll)
 
         } catch (e: Exception) {
-            downloading = false
-            toast("تعذر بدء التحميل: ${e.message}")
+            finishWithError(
+                "تعذر بدء التحميل: ${e.message}"
+            )
         }
     }
 
-    private fun updateDownloadProgress() {
-        if (!downloading || activeDownloadId < 0) return
+    private fun checkDownload() {
+        if (!downloading || activeDownloadId < 0L) return
 
-        var cursor: android.database.Cursor? = null
-
-        try {
-            cursor = downloadManager.query(
-                DownloadManager.Query().setFilterById(activeDownloadId)
+        val cursor = manager.query(
+            DownloadManager.Query().setFilterById(
+                activeDownloadId
             )
+        ) ?: return
 
-            if (cursor == null || !cursor.moveToFirst()) {
-                finishDownload(false, "لم يتم العثور على مهمة التحميل.")
+        cursor.use {
+            if (!it.moveToFirst()) {
+                finishWithError("تعذر العثور على مهمة التحميل.")
                 return
             }
 
-            val statusIndex = cursor.getColumnIndex(
-                DownloadManager.COLUMN_STATUS
+            val state = it.getInt(
+                it.getColumnIndexOrThrow(
+                    DownloadManager.COLUMN_STATUS
+                )
             )
 
-            val reasonIndex = cursor.getColumnIndex(
-                DownloadManager.COLUMN_REASON
+            val downloaded = it.getLong(
+                it.getColumnIndexOrThrow(
+                    DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
+                )
             )
 
-            val downloadedIndex = cursor.getColumnIndex(
-                DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
+            val total = it.getLong(
+                it.getColumnIndexOrThrow(
+                    DownloadManager.COLUMN_TOTAL_SIZE_BYTES
+                )
             )
 
-            val totalIndex = cursor.getColumnIndex(
-                DownloadManager.COLUMN_TOTAL_SIZE_BYTES
-            )
+            if (total > 0L) {
+                val percent = (
+                    downloaded * 100L / total
+                ).coerceIn(0L, 100L).toInt()
 
-            if (statusIndex < 0) {
-                finishDownload(false, "تعذر قراءة حالة التحميل.")
-                return
-            }
+                progress.progress = percent
 
-            val downloadStatus = cursor.getInt(statusIndex)
-
-            val downloaded = if (downloadedIndex >= 0) {
-                cursor.getLong(downloadedIndex)
+                progressText.text =
+                    "$percent% — ${formatBytes(downloaded)} / " +
+                    formatBytes(total)
             } else {
-                0L
+                progressText.text =
+                    "تم تنزيل ${formatBytes(downloaded)}"
             }
 
-            val total = if (totalIndex >= 0) {
-                cursor.getLong(totalIndex)
-            } else {
-                -1L
-            }
-
-            when (downloadStatus) {
-                DownloadManager.STATUS_PENDING,
-                DownloadManager.STATUS_RUNNING -> {
-                    if (total > 0) {
-                        val percent = (
-                            downloaded * 100L / total
-                        ).coerceIn(0L, 100L).toInt()
-
-                        progress.progress = percent
-
-                        progressText.text =
-                            "$percent% — ${formatBytes(downloaded)} / " +
-                            formatBytes(total)
-                    } else {
-                        progressText.text =
-                            "تم تنزيل ${formatBytes(downloaded)}"
-                    }
-
-                    status.text = "جارٍ تنزيل الملف..."
-                }
-
+            when (state) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    finishDownload(
-                        true,
-                        "اكتمل تنزيل الملف بنجاح."
-                    )
+                    if (downloadStage == DOWNLOAD_APK) {
+                        if (!apkFile.isFile || apkFile.length() == 0L) {
+                            finishWithError(
+                                "ملف اللعبة غير موجود أو فارغ."
+                            )
+                            return
+                        }
+
+                        if (OBB_URL.isNotBlank()) {
+                            if (!validHttpsUrl(OBB_URL)) {
+                                finishWithError(
+                                    "رابط ملفات اللعبة غير صالح."
+                                )
+                                return
+                            }
+
+                            status.text =
+                                "اكتمل تنزيل اللعبة. " +
+                                "جارٍ تنزيل ملفاتها الإضافية..."
+
+                            startDownload(
+                                OBB_URL,
+                                DOWNLOAD_OBB
+                            )
+                        } else {
+                            downloading = false
+                            handler.removeCallbacks(poll)
+                            downloadButton.isEnabled = true
+                            status.text =
+                                "اكتمل تنزيل اللعبة. جاهز للتثبيت."
+                            progress.progress = 100
+                            progressText.text = "اكتمل التنزيل"
+                            installApk()
+                        }
+                    } else {
+                        downloading = false
+                        handler.removeCallbacks(poll)
+                        downloadButton.isEnabled = true
+
+                        status.text =
+                            "اكتمل تنزيل ملفات اللعبة. جاهز للتثبيت."
+
+                        progress.progress = 100
+                        progressText.text = "اكتمل التنزيل"
+
+                        installApk()
+                    }
                 }
 
                 DownloadManager.STATUS_FAILED -> {
-                    val reason = if (reasonIndex >= 0) {
-                        cursor.getInt(reasonIndex)
-                    } else {
-                        -1
-                    }
+                    val reason = it.getInt(
+                        it.getColumnIndexOrThrow(
+                            DownloadManager.COLUMN_REASON
+                        )
+                    )
 
-                    finishDownload(
-                        false,
+                    finishWithError(
                         "فشل التحميل. رمز الخطأ: $reason"
                     )
                 }
             }
-
-        } catch (e: Exception) {
-            finishDownload(
-                false,
-                "حدث خطأ أثناء متابعة التحميل: ${e.message}"
-            )
-        } finally {
-            cursor?.close()
-        }
-    }
-
-    private fun finishDownload(success: Boolean, message: String) {
-        if (!downloading) return
-
-        downloading = false
-        handler.removeCallbacks(pollTask)
-
-        apkButton.isEnabled = true
-        obbButton.isEnabled = true
-        cancelButton.isEnabled = false
-
-        if (success) {
-            progress.progress = 100
-            progressText.text = "100% — اكتمل التنزيل"
-
-            if (activeType == "apk") {
-                val file = apkFile
-
-                if (file != null && file.isFile && file.length() > 0L) {
-                    installButton.isEnabled = true
-                } else {
-                    status.text = "اكتمل التنزيل، لكن ملف APK غير صالح."
-                    return
-                }
-            } else {
-                val file = obbFile
-
-                if (file != null && file.isFile && file.length() > 0L) {
-                    status.text =
-                        "$message\n\n" +
-                        "المسار:\n${file.absolutePath}"
-                } else {
-                    status.text = "اكتمل التنزيل، لكن ملف OBB غير موجود."
-                    return
-                }
-            }
-        } else {
-            installButton.isEnabled =
-                apkFile?.isFile == true &&
-                (apkFile?.length() ?: 0L) > 0L
-        }
-
-        status.text = message
-    }
-
-    private fun cancelDownload() {
-        if (!downloading) return
-
-        val id = activeDownloadId
-
-        handler.removeCallbacks(pollTask)
-
-        try {
-            downloadManager.remove(id)
-        } catch (_: Exception) {
-        }
-
-        downloading = false
-
-        apkButton.isEnabled = true
-        obbButton.isEnabled = true
-        cancelButton.isEnabled = false
-
-        progressText.text = "تم إلغاء التحميل."
-        status.text = "تم إلغاء مهمة التحميل."
-
-        toast("تم إلغاء التحميل.")
-    }
-
-    private fun restoreDownloads() {
-        val directory = getExternalFilesDir(
-            Environment.DIRECTORY_DOWNLOADS
-        ) ?: return
-
-        val apk = File(directory, "fr3on-game.apk")
-        val obb = File(directory, "fr3on-game.obb")
-
-        if (apk.isFile && apk.length() > 0L) {
-            apkFile = apk
-            installButton.isEnabled = true
-        }
-
-        if (obb.isFile && obb.length() > 0L) {
-            obbFile = obb
         }
     }
 
     private fun installApk() {
-        val file = apkFile
-
-        if (file == null || !file.isFile || file.length() <= 0L) {
-            toast("نزّل ملف APK صالحًا أولًا.")
+        if (!apkFile.isFile || apkFile.length() == 0L) {
+            status.text = "ملف اللعبة غير جاهز للتثبيت."
             return
         }
 
-        if (android.os.Build.VERSION.SDK_INT >= 26 &&
+        if (Build.VERSION.SDK_INT >= 26 &&
             !packageManager.canRequestPackageInstalls()
         ) {
             status.text =
-                "اسمح للتطبيق بتثبيت ملفات APK من إعدادات أندرويد."
-
-            val intent = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:$packageName")
-            )
+                "اسمح للتطبيق بتثبيت الملفات من إعدادات أندرويد."
 
             try {
-                startActivity(intent)
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName")
+                    )
+                )
             } catch (_: Exception) {
-                toast("افتح إعدادات تثبيت التطبيقات يدويًا.")
+                toast("افتح إعدادات تثبيت التطبيقات.")
             }
 
             return
         }
 
-        try {
-            val uri = downloadManager.getUriForDownloadedFile(
-                apkDownloadId
-            )
+        val uri = manager.getUriForDownloadedFile(apkDownloadId)
 
-            if (uri != null) {
-                openInstaller(uri)
-                return
-            }
-
-            toast(
-                "لم يُعثر على رابط التنزيل. أعد تنزيل ملف APK."
-            )
-
-        } catch (e: Exception) {
+        if (uri == null) {
             status.text =
-                "تعذر فتح المثبّت:\n${e.message}"
+                "تعذر فتح ملف التثبيت. أعد تنزيل اللعبة."
+            return
         }
-    }
 
-    private fun openInstaller(uri: Uri) {
         try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(
@@ -602,107 +498,55 @@ class MainActivity : Activity() {
 
             startActivity(intent)
 
+            status.text =
+                "اتبع تعليمات أندرويد لإكمال تثبيت اللعبة."
+
         } catch (e: Exception) {
             status.text =
-                "تعذر تشغيل مثبّت أندرويد.\n${e.message}"
+                "تعذر فتح شاشة التثبيت: ${e.message}"
         }
     }
 
-    private fun label(text: String): TextView {
-        return TextView(this).apply {
-            this.text = text
-            textSize = 14f
-            setTextColor(WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(8))
+    private fun openInstalledGame() {
+        toast("سيظهر زر اللعب بعد إضافة دعم التحقق من تثبيت اللعبة.")
+    }
+
+    private fun restoreState() {
+        if (apkFile.isFile && apkFile.length() > 0L) {
+            status.text = "يوجد ملف لعبة محفوظ. يمكنك بدء تنزيل نسخة جديدة."
         }
     }
 
-    private fun editText(hintText: String): EditText {
-        return EditText(this).apply {
-            hint = hintText
-            textSize = 13f
-            setSingleLine(true)
-            setTextColor(WHITE)
-            setHintTextColor(MUTED)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+    private fun finishWithError(message: String) {
+        downloading = false
+        handler.removeCallbacks(poll)
+        downloadButton.isEnabled = true
+        status.text = message
+        toast(message)
+    }
 
-            background = GradientDrawable().apply {
-                setColor(CARD)
-                cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), 0xFF454A53.toInt())
-            }
+    private fun validHttpsUrl(value: String): Boolean {
+        return try {
+            val uri = Uri.parse(value)
+            uri.scheme == "https" && !uri.host.isNullOrBlank() &&
+                !value.contains("example.com")
+        } catch (_: Exception) {
+            false
         }
     }
 
-    private fun button(
-        textValue: String,
+    private fun makeButton(
+        label: String,
         color: Int,
-        textColor: Int = WHITE,
+        textColor: Int,
         action: () -> Unit
-    ): Button {
-        return Button(this).apply {
-            text = textValue
-            textSize = 14f
-            isAllCaps = false
-            setTextColor(textColor)
-
-            background = GradientDrawable().apply {
-                setColor(color)
-                cornerRadius = dp(12).toFloat()
-            }
-
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            setOnClickListener { action() }
+    ) = Button(this).apply {
+        text = label
+        textSize = 16f
+        isAllCaps = false
+        setTextColor(textColor)
+        background = GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(14).toFloat()
         }
-    }
-
-    private fun fullWidth(): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
-
-    private fun space(height: Int): android.view.View {
-        return android.view.View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                1,
-                dp(height)
-            )
-        }
-    }
-
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
-    }
-
-    private fun formatBytes(bytes: Long): String {
-        if (bytes < 1024L) return "$bytes بايت"
-
-        val kb = bytes / 1024.0
-        if (kb < 1024.0) {
-            return String.format(Locale.US, "%.2f KB", kb)
-        }
-
-        val mb = kb / 1024.0
-        if (mb < 1024.0) {
-            return String.format(Locale.US, "%.2f MB", mb)
-        }
-
-        return String.format(Locale.US, "%.2f GB", mb / 1024.0)
-    }
-
-    private fun toast(message: String) {
-        Toast.makeText(
-            this,
-            message,
-            Toast.LENGTH_LONG
-        ).show()
-    }
-
-    override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
-        super.onDestroy()
-    }
-}
+        setPadding(dp(12), dp(12),
