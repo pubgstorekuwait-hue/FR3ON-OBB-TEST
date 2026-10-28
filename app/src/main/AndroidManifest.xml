@@ -1,19 +1,32 @@
-<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android"><application
-    android:allowBackup="false"
-    android:label="FR3ON OBB TEST"
-    android:theme="@android:style/Theme.Material.Light.NoActionBar">
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <activity
-        android:name=".MainActivity"
-        android:exported="true">
+    <!-- السماح بتنزيل الملفات من الإنترنت -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
-        <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent-filter>
+    <!-- معرفة حالة الاتصال بالإنترنت -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    </activity>
+    <!-- السماح بطلب تثبيت ملفات APK من داخل التطبيق -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-</application>
+    <application
+        android:allowBackup="false"
+        android:label="FR3ON GAME INSTALLER"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
 
 </manifest>
