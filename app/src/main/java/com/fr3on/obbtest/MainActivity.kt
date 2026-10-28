@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -15,7 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -23,19 +21,13 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import java.io.File
 import java.util.Locale
 
 class MainActivity : Activity() {
 
     companion object {
-        // استبدل الرابط برابط APK الحقيقي للعبة.
-        private const val APK_URL =
-            "https://example.com/game.apk"
-
-        // لو اللعبة تحتاج OBB، ضع رابطه هنا.
-        // اتركه فارغًا إذا كانت اللعبة لا تحتاج ملف OBB منفصلًا.
-        private const val OBB_URL = ""
+        private const val GAME_URL =
+            "https://github.com/Promastergame/tinyapk-lab/raw/refs/heads/main/Tetris/build/LowBlocks-release.apk"
 
         private const val BG = 0xFF101114.toInt()
         private const val CARD = 0xFF1C1F24.toInt()
@@ -43,10 +35,6 @@ class MainActivity : Activity() {
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val MUTED = 0xFFB8BEC8.toInt()
         private const val GREEN = 0xFF45D483.toInt()
-
-        private const val DOWNLOAD_NONE = 0
-        private const val DOWNLOAD_APK = 1
-        private const val DOWNLOAD_OBB = 2
     }
 
     private lateinit var manager: DownloadManager
@@ -54,24 +42,19 @@ class MainActivity : Activity() {
     private lateinit var progress: ProgressBar
     private lateinit var progressText: TextView
     private lateinit var downloadButton: Button
-    private lateinit var playButton: Button
 
     private val handler = Handler(Looper.getMainLooper())
 
-    private var apkDownloadId = -1L
-    private var obbDownloadId = -1L
-    private var activeDownloadId = -1L
-    private var downloadStage = DOWNLOAD_NONE
+    private var downloadId = -1L
     private var downloading = false
 
-    private lateinit var apkFile: File
-    private lateinit var obbFile: File
+    private val apkName = "fr3on-test-game.apk"
 
     private val poll = object : Runnable {
         override fun run() {
             if (downloading) {
                 checkDownload()
-                handler.postDelayed(this, 700)
+                handler.postDelayed(this, 500)
             }
         }
     }
@@ -83,15 +66,7 @@ class MainActivity : Activity() {
             Context.DOWNLOAD_SERVICE
         ) as DownloadManager
 
-        val directory = getExternalFilesDir(
-            Environment.DIRECTORY_DOWNLOADS
-        ) ?: filesDir
-
-        apkFile = File(directory, "fr3on-game.apk")
-        obbFile = File(directory, "fr3on-game.obb")
-
         buildInterface()
-        restoreState()
     }
 
     private fun buildInterface() {
@@ -105,7 +80,7 @@ class MainActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(20), dp(30), dp(20), dp(24))
+            setPadding(dp(22), dp(32), dp(22), dp(28))
         }
 
         val logo = TextView(this).apply {
@@ -129,13 +104,13 @@ class MainActivity : Activity() {
             textSize = 15f
             gravity = Gravity.CENTER
             setTextColor(MUTED)
-            setPadding(0, dp(12), 0, dp(28))
+            setPadding(0, dp(12), 0, dp(30))
         }
 
-        val gameCard = LinearLayout(this).apply {
+        val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(20), dp(26), dp(20), dp(26))
+            setPadding(dp(20), dp(28), dp(20), dp(28))
 
             background = GradientDrawable().apply {
                 setColor(CARD)
@@ -144,35 +119,35 @@ class MainActivity : Activity() {
             }
         }
 
-        val gameIcon = TextView(this).apply {
+        val icon = TextView(this).apply {
             text = "🎮"
             textSize = 64f
             gravity = Gravity.CENTER
         }
 
         val gameName = TextView(this).apply {
-            text = "لعبتك المفضلة"
-            textSize = 23f
+            text = "Tetris"
+            textSize = 26f
             gravity = Gravity.CENTER
             setTextColor(WHITE)
             typeface = Typeface.DEFAULT_BOLD
             setPadding(0, dp(12), 0, dp(8))
         }
 
-        val gameDescription = TextView(this).apply {
-            text = "تحميل ملفات اللعبة وتجهيزها للتثبيت"
+        val gameInfo = TextView(this).apply {
+            text = "لعبة تجريبية صغيرة"
             textSize = 14f
             gravity = Gravity.CENTER
             setTextColor(MUTED)
         }
 
-        gameCard.addView(gameIcon)
-        gameCard.addView(gameName)
-        gameCard.addView(gameDescription)
+        card.addView(icon)
+        card.addView(gameName)
+        card.addView(gameInfo)
 
         val statusCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            setPadding(dp(16), dp(18), dp(16), dp(18))
 
             background = GradientDrawable().apply {
                 setColor(CARD)
@@ -205,29 +180,30 @@ class MainActivity : Activity() {
         }
 
         statusCard.addView(status)
-        statusCard.addView(space(14))
+        statusCard.addView(space(16))
         statusCard.addView(progress)
         statusCard.addView(progressText)
 
-        downloadButton = makeButton(
-            "تحميل اللعبة",
-            RED,
-            WHITE
-        ) {
-            startGameDownload()
-        }
+        downloadButton = Button(this).apply {
+            text = "تحميل اللعبة"
+            textSize = 17f
+            isAllCaps = false
+            setTextColor(WHITE)
 
-        playButton = makeButton(
-            "فتح اللعبة",
-            GREEN,
-            BG
-        ) {
-            openInstalledGame()
+            background = GradientDrawable().apply {
+                setColor(RED)
+                cornerRadius = dp(14).toFloat()
+            }
+
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+
+            setOnClickListener {
+                startDownload()
+            }
         }
 
         val note = TextView(this).apply {
-            text = "سيتم تنزيل الملفات وتجهيزها. " +
-                "قد يطلب أندرويد تأكيد تثبيت اللعبة."
+            text = "سيتم تنزيل اللعبة، ثم فتح شاشة التثبيت."
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(MUTED)
@@ -237,13 +213,11 @@ class MainActivity : Activity() {
         content.addView(logo)
         content.addView(subtitle)
         content.addView(description)
-        content.addView(gameCard)
+        content.addView(card)
         content.addView(space(20))
         content.addView(statusCard)
         content.addView(space(20))
         content.addView(downloadButton, fullWidth())
-        content.addView(space(10))
-        content.addView(playButton, fullWidth())
         content.addView(note)
 
         scroll.addView(content)
@@ -266,42 +240,31 @@ class MainActivity : Activity() {
 
         root.addView(footer)
         setContentView(root)
-
-        playButton.visibility = View.GONE
     }
 
-    private fun startGameDownload() {
+    private fun startDownload() {
         if (downloading) {
             toast("التحميل جارٍ بالفعل.")
             return
         }
 
-        if (!validHttpsUrl(APK_URL)) {
-            status.text = "رابط اللعبة غير مجهز بعد."
-            toast("يجب وضع رابط APK حقيقي في الكود.")
-            return
-        }
-
-        downloading = true
-        downloadButton.isEnabled = false
-        progress.progress = 0
-
-        startDownload(APK_URL, DOWNLOAD_APK)
-    }
-
-    private fun startDownload(url: String, stage: Int) {
         try {
-            val uri = Uri.parse(url)
+            val directory = getExternalFilesDir(
+                Environment.DIRECTORY_DOWNLOADS
+            ) ?: throw Exception("مجلد التنزيل غير متاح.")
 
-            val fileName = if (stage == DOWNLOAD_APK) {
-                "fr3on-game.apk"
-            } else {
-                "fr3on-game.obb"
+            val oldFile = java.io.File(directory, apkName)
+
+            if (oldFile.exists() && !oldFile.delete()) {
+                throw Exception("تعذر حذف الملف القديم.")
             }
 
-            val request = DownloadManager.Request(uri)
-                .setTitle("FR3ON - تحميل اللعبة")
-                .setDescription("جارٍ تنزيل ملفات اللعبة")
+            val request = DownloadManager.Request(
+                Uri.parse(GAME_URL)
+            )
+                .setTitle("FR3ON - Tetris")
+                .setDescription("جارٍ تنزيل اللعبة")
+                .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(
                     DownloadManager.Request
                         .VISIBILITY_VISIBLE_NOTIFY_COMPLETED
@@ -311,46 +274,37 @@ class MainActivity : Activity() {
                 .setDestinationInExternalFilesDir(
                     this,
                     Environment.DIRECTORY_DOWNLOADS,
-                    fileName
+                    apkName
                 )
 
-            activeDownloadId = manager.enqueue(request)
-            downloadStage = stage
+            downloadId = manager.enqueue(request)
+            downloading = true
 
-            if (stage == DOWNLOAD_APK) {
-                apkDownloadId = activeDownloadId
-            } else {
-                obbDownloadId = activeDownloadId
-            }
-
-            status.text = if (stage == DOWNLOAD_APK) {
-                "جارٍ تحميل اللعبة..."
-            } else {
-                "جارٍ تجهيز ملفات اللعبة..."
-            }
+            downloadButton.isEnabled = false
+            progress.progress = 0
+            status.text = "جارٍ تنزيل اللعبة..."
 
             handler.removeCallbacks(poll)
             handler.post(poll)
 
         } catch (e: Exception) {
-            finishWithError(
-                "تعذر بدء التحميل: ${e.message}"
-            )
+            downloading = false
+            downloadButton.isEnabled = true
+            status.text = "تعذر بدء التنزيل."
+            toast(e.message ?: "حدث خطأ.")
         }
     }
 
     private fun checkDownload() {
-        if (!downloading || activeDownloadId < 0L) return
+        if (!downloading || downloadId < 0L) return
 
         val cursor = manager.query(
-            DownloadManager.Query().setFilterById(
-                activeDownloadId
-            )
+            DownloadManager.Query().setFilterById(downloadId)
         ) ?: return
 
         cursor.use {
             if (!it.moveToFirst()) {
-                finishWithError("تعذر العثور على مهمة التحميل.")
+                finishError("تعذر العثور على مهمة التنزيل.")
                 return
             }
 
@@ -360,7 +314,7 @@ class MainActivity : Activity() {
                 )
             )
 
-            val downloaded = it.getLong(
+            val received = it.getLong(
                 it.getColumnIndexOrThrow(
                     DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR
                 )
@@ -374,68 +328,29 @@ class MainActivity : Activity() {
 
             if (total > 0L) {
                 val percent = (
-                    downloaded * 100L / total
+                    received * 100L / total
                 ).coerceIn(0L, 100L).toInt()
 
                 progress.progress = percent
-
                 progressText.text =
-                    "$percent% — ${formatBytes(downloaded)} / " +
-                    formatBytes(total)
+                    "$percent% — ${formatBytes(received)} / ${formatBytes(total)}"
             } else {
                 progressText.text =
-                    "تم تنزيل ${formatBytes(downloaded)}"
+                    "تم تنزيل ${formatBytes(received)}"
             }
 
             when (state) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    if (downloadStage == DOWNLOAD_APK) {
-                        if (!apkFile.isFile || apkFile.length() == 0L) {
-                            finishWithError(
-                                "ملف اللعبة غير موجود أو فارغ."
-                            )
-                            return
-                        }
+                    downloading = false
+                    handler.removeCallbacks(poll)
+                    downloadButton.isEnabled = true
 
-                        if (OBB_URL.isNotBlank()) {
-                            if (!validHttpsUrl(OBB_URL)) {
-                                finishWithError(
-                                    "رابط ملفات اللعبة غير صالح."
-                                )
-                                return
-                            }
+                    progress.progress = 100
+                    progressText.text = "اكتمل التنزيل"
 
-                            status.text =
-                                "اكتمل تنزيل اللعبة. " +
-                                "جارٍ تنزيل ملفاتها الإضافية..."
+                    status.text = "تم تنزيل اللعبة. جارٍ تجهيز التثبيت..."
 
-                            startDownload(
-                                OBB_URL,
-                                DOWNLOAD_OBB
-                            )
-                        } else {
-                            downloading = false
-                            handler.removeCallbacks(poll)
-                            downloadButton.isEnabled = true
-                            status.text =
-                                "اكتمل تنزيل اللعبة. جاهز للتثبيت."
-                            progress.progress = 100
-                            progressText.text = "اكتمل التنزيل"
-                            installApk()
-                        }
-                    } else {
-                        downloading = false
-                        handler.removeCallbacks(poll)
-                        downloadButton.isEnabled = true
-
-                        status.text =
-                            "اكتمل تنزيل ملفات اللعبة. جاهز للتثبيت."
-
-                        progress.progress = 100
-                        progressText.text = "اكتمل التنزيل"
-
-                        installApk()
-                    }
+                    openInstaller()
                 }
 
                 DownloadManager.STATUS_FAILED -> {
@@ -445,25 +360,17 @@ class MainActivity : Activity() {
                         )
                     )
 
-                    finishWithError(
-                        "فشل التحميل. رمز الخطأ: $reason"
-                    )
+                    finishError("فشل التنزيل. رمز الخطأ: $reason")
                 }
             }
         }
     }
 
-    private fun installApk() {
-        if (!apkFile.isFile || apkFile.length() == 0L) {
-            status.text = "ملف اللعبة غير جاهز للتثبيت."
-            return
-        }
-
+    private fun openInstaller() {
         if (Build.VERSION.SDK_INT >= 26 &&
             !packageManager.canRequestPackageInstalls()
         ) {
-            status.text =
-                "اسمح للتطبيق بتثبيت الملفات من إعدادات أندرويد."
+            status.text = "اسمح بتثبيت التطبيقات من هذا المصدر."
 
             try {
                 startActivity(
@@ -479,15 +386,10 @@ class MainActivity : Activity() {
             return
         }
 
-        val uri = manager.getUriForDownloadedFile(apkDownloadId)
-
-        if (uri == null) {
-            status.text =
-                "تعذر فتح ملف التثبيت. أعد تنزيل اللعبة."
-            return
-        }
-
         try {
+            val uri = manager.getUriForDownloadedFile(downloadId)
+                ?: throw Exception("تعذر العثور على الملف.")
+
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(
                     uri,
@@ -498,26 +400,14 @@ class MainActivity : Activity() {
 
             startActivity(intent)
 
-            status.text =
-                "اتبع تعليمات أندرويد لإكمال تثبيت اللعبة."
+            status.text = "أكمل التثبيت من شاشة أندرويد."
 
         } catch (e: Exception) {
-            status.text =
-                "تعذر فتح شاشة التثبيت: ${e.message}"
+            status.text = "تعذر فتح التثبيت: ${e.message}"
         }
     }
 
-    private fun openInstalledGame() {
-        toast("سيظهر زر اللعب بعد إضافة دعم التحقق من تثبيت اللعبة.")
-    }
-
-    private fun restoreState() {
-        if (apkFile.isFile && apkFile.length() > 0L) {
-            status.text = "يوجد ملف لعبة محفوظ. يمكنك بدء تنزيل نسخة جديدة."
-        }
-    }
-
-    private fun finishWithError(message: String) {
+    private fun finishError(message: String) {
         downloading = false
         handler.removeCallbacks(poll)
         downloadButton.isEnabled = true
@@ -525,28 +415,51 @@ class MainActivity : Activity() {
         toast(message)
     }
 
-    private fun validHttpsUrl(value: String): Boolean {
-        return try {
-            val uri = Uri.parse(value)
-            uri.scheme == "https" && !uri.host.isNullOrBlank() &&
-                !value.contains("example.com")
-        } catch (_: Exception) {
-            false
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1024L) return "$bytes بايت"
+
+        val kb = bytes / 1024.0
+
+        if (kb < 1024.0) {
+            return String.format(Locale.US, "%.2f KB", kb)
         }
+
+        return String.format(
+            Locale.US,
+            "%.2f MB",
+            kb / 1024.0
+        )
     }
 
-    private fun makeButton(
-        label: String,
-        color: Int,
-        textColor: Int,
-        action: () -> Unit
-    ) = Button(this).apply {
-        text = label
-        textSize = 16f
-        isAllCaps = false
-        setTextColor(textColor)
-        background = GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(14).toFloat()
+    private fun makeSpace(height: Int) = space(height)
+
+    private fun space(height: Int) =
+        android.view.View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                1,
+                dp(height)
+            )
         }
-        setPadding(dp(12), dp(12),
+
+    private fun fullWidth() =
+        LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+    private fun dp(value: Int) =
+        (value * resources.displayMetrics.density).toInt()
+
+    private fun toast(message: String) {
+        Toast.makeText(
+            this,
+            message,
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+}
