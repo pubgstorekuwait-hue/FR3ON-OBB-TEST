@@ -2,10 +2,10 @@ package com.fr3on.obbtest
 
 import android.app.Activity
 import android.os.Bundle
-import android.view.Gravity
-import android.view.ViewGroup
 import android.content.Intent
 import android.net.Uri
+import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -13,155 +13,232 @@ import java.io.File
 
 class MainActivity : Activity() {
 
-private lateinit var status: TextView
+    private lateinit var status: TextView
 
-companion object {
-    private const val PICK_FILE_REQUEST = 1001
-}
-
-override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-
-    val layout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        setPadding(32, 32, 32, 32)
+    companion object {
+        private const val PICK_FILE_REQUEST = 1001
     }
 
-    val title = TextView(this).apply {
-        text = "FR3ON OBB TEST"
-        textSize = 25f
-        gravity = Gravity.CENTER
-    }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-    status = TextView(this).apply {
-        text = "جاهز لاختبار ملفات البيانات"
-        textSize = 17f
-        gravity = Gravity.CENTER
-        setPadding(0, 24, 0, 24)
-    }
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(32, 32, 32, 32)
+        }
 
-    val createButton = Button(this).apply {
-        text = "إنشاء ملف OBB تجريبي"
+        val title = TextView(this).apply {
+            text = "FR3ON OBB TEST"
+            textSize = 25f
+            gravity = Gravity.CENTER
+        }
 
-        setOnClickListener {
-            try {
-                val testDir = File(filesDir, "obb-test")
+        status = TextView(this).apply {
+            text = "جاهز لاختبار ملفات البيانات"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setPadding(0, 24, 0, 24)
+        }
 
-                if (!testDir.exists() && !testDir.mkdirs()) {
-                    throw Exception("تعذر إنشاء مجلد الاختبار")
+        val createButton = Button(this).apply {
+            text = "إنشاء ملف OBB تجريبي"
+
+            setOnClickListener {
+                try {
+                    val testDir = File(filesDir, "obb-test")
+
+                    if (!testDir.exists() && !testDir.mkdirs()) {
+                        throw Exception("تعذر إنشاء مجلد الاختبار")
+                    }
+
+                    val testFile = File(
+                        testDir,
+                        "main.1.com.fr3on.obbtest.obb"
+                    )
+
+                    testFile.writeText(
+                        "FR3ON OBB TEST\nTest data file\n"
+                    )
+
+                    status.text =
+                        "تم إنشاء الملف التجريبي بنجاح\n" +
+                        "الحجم: ${testFile.length()} بايت"
+
+                } catch (e: Exception) {
+                    status.text =
+                        "فشل إنشاء الملف:\n${e.message}"
                 }
-
-                val testFile = File(
-                    testDir,
-                    "main.1.com.fr3on.obbtest.obb"
-                )
-
-                testFile.writeText(
-                    "FR3ON OBB TEST\nTest data file\n"
-                )
-
-                status.text =
-                    "تم إنشاء الملف التجريبي بنجاح\n" +
-                    "الحجم: ${testFile.length()} بايت"
-            } catch (e: Exception) {
-                status.text = "فشل إنشاء الملف:\n${e.message}"
             }
         }
-    }
 
-    val checkButton = Button(this).apply {
-        text = "فحص الملف التجريبي"
+        val checkButton = Button(this).apply {
+            text = "فحص الملف التجريبي"
 
-        setOnClickListener {
-            try {
-                val testFile = File(
-                    filesDir,
-                    "obb-test/main.1.com.fr3on.obbtest.obb"
-                )
+            setOnClickListener {
+                try {
+                    val testFile = File(
+                        filesDir,
+                        "obb-test/main.1.com.fr3on.obbtest.obb"
+                    )
 
-                status.text = if (testFile.isFile) {
-                    val content = testFile.readText()
+                    status.text = if (testFile.isFile) {
+                        val content = testFile.readText()
 
-                    "الملف موجود ويمكن قراءته بنجاح\n\n" +
+                        "الملف موجود ويمكن قراءته بنجاح\n\n" +
                         "الحجم: ${testFile.length()} بايت\n\n" +
                         "المحتوى:\n$content"
-                } else {
-                    "الملف غير موجود.\n" +
+                    } else {
+                        "الملف غير موجود.\n" +
                         "اضغط إنشاء ملف OBB تجريبي أولًا."
+                    }
+
+                } catch (e: Exception) {
+                    status.text =
+                        "فشل فحص الملف:\n${e.message}"
                 }
-            } catch (e: Exception) {
-                status.text = "فشل فحص الملف:\n${e.message}"
             }
         }
-    }
 
-    val pickButton = Button(this).apply {
-        text = "اختيار ملف من الموبايل"
+        val pickButton = Button(this).apply {
+            text = "اختيار ملف من الموبايل"
 
-        setOnClickListener {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
+            setOnClickListener {
+                try {
+                    val intent = Intent(
+                        Intent.ACTION_OPEN_DOCUMENT
+                    ).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+
+                        putExtra(
+                            Intent.EXTRA_MIME_TYPES,
+                            arrayOf(
+                                "application/octet-stream",
+                                "application/vnd.android.obb",
+                                "*/*"
+                            )
+                        )
+                    }
+
+                    startActivityForResult(
+                        intent,
+                        PICK_FILE_REQUEST
+                    )
+
+                } catch (e: Exception) {
+                    status.text =
+                        "تعذر فتح أداة اختيار الملفات:\n${e.message}"
+                }
             }
-
-            startActivityForResult(intent, PICK_FILE_REQUEST)
         }
-    }
 
-    layout.addView(title)
-    layout.addView(status)
+        layout.addView(title)
+        layout.addView(status)
 
-    listOf(createButton, checkButton, pickButton).forEach { button ->
-        layout.addView(
-            button,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+        listOf(
+            createButton,
+            checkButton,
+            pickButton
+        ).forEach { button ->
+            layout.addView(
+                button,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
             )
-        )
+        }
+
+        setContentView(layout)
     }
 
-    setContentView(layout)
-}
-
-@Deprecated("Deprecated in Android API")
-override fun onActivityResult(
-    requestCode: Int,
-    resultCode: Int,
-    data: Intent?
-) {
-    super.onActivityResult(requestCode, resultCode, data)
-
-    if (requestCode == PICK_FILE_REQUEST &&
-        resultCode == RESULT_OK
+    @Deprecated("Deprecated in Android API")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
     ) {
-        val uri: Uri = data?.data ?: return
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode != PICK_FILE_REQUEST) return
+
+        if (resultCode != RESULT_OK) {
+            status.text = "لم يتم اختيار ملف."
+            return
+        }
+
+        val uri: Uri = data?.data ?: run {
+            status.text = "لم يتم استلام الملف المحدد."
+            return
+        }
 
         try {
-            val fileName = uri.lastPathSegment ?: "ملف مختار"
+            val fileName = getFileName(uri)
 
-            contentResolver.openInputStream(uri)?.use { input ->
-                val buffer = ByteArray(8192)
-                var totalBytes = 0L
+            status.text = "جارٍ فحص الملف...\n$fileName"
 
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count == -1) break
-                    totalBytes += count
+            Thread {
+                try {
+                    var totalBytes = 0L
+
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        val buffer = ByteArray(64 * 1024)
+
+                        while (true) {
+                            val count = input.read(buffer)
+
+                            if (count == -1) break
+
+                            totalBytes += count
+                        }
+                    } ?: throw Exception("تعذر فتح الملف المحدد.")
+
+                    runOnUiThread {
+                        status.text =
+                            "تم فتح الملف وقراءته بنجاح\n\n" +
+                            "الاسم: $fileName\n\n" +
+                            "الحجم المقروء: $totalBytes بايت\n\n" +
+                            "لم يتم نقل الملف أو تعديله."
+                    }
+
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        status.text =
+                            "تعذرت قراءة الملف:\n${e.message}"
+                    }
                 }
+            }.start()
 
-                status.text =
-                    "تم فتح الملف وقراءته بنجاح\n\n" +
-                    "الاسم: $fileName\n" +
-                    "الحجم المقروء: $totalBytes بايت"
-            } ?: run {
-                status.text = "تعذر فتح الملف المحدد."
-            }
         } catch (e: Exception) {
-            status.text = "حدث خطأ أثناء قراءة الملف:\n${e.message}"
+            status.text =
+                "حدث خطأ أثناء فحص الملف:\n${e.message}"
         }
     }
-}
 
+    private fun getFileName(uri: Uri): String {
+        var name = uri.lastPathSegment ?: "ملف غير معروف"
+
+        try {
+            contentResolver.query(
+                uri,
+                null,
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(
+                    android.provider.OpenableColumns.DISPLAY_NAME
+                )
+
+                if (cursor.moveToFirst() && nameIndex >= 0) {
+                    name = cursor.getString(nameIndex) ?: name
+                }
+            }
+        } catch (_: Exception) {
+            // استخدام الاسم البديل إذا تعذر الحصول على الاسم الأصلي.
+        }
+
+        return name
+    }
 }
