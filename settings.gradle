@@ -15,4 +15,5 @@ mavenCentral()
 }
 
 rootProject.name = "FR3ON-OBB-TEST"
+
 include(":app")
